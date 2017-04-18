@@ -7,9 +7,8 @@ import signal
 import sys
 import threading
 
-import echo
 
-class Upperware:
+class Monitor:
     def __init__(self, app, filename):
         if self.is_threading():
             print()
@@ -201,10 +200,3 @@ class Upperware:
             finally:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
                 return iter([data])
-
-
-
-signal.getsignal(signal.SIGINT)
-
-filename = "/dev/shm/gunicorn_stat.json"
-app = Upperware(echo.app, filename)

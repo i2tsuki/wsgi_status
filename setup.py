@@ -10,14 +10,14 @@ setup(
     name='wsgi_status',
     version='0.1.0',
 
-    description='Monitoring status wsgi upper middleware',
+    description='Monitoring wsgi status as an upper wsgi middleware',
     long_description=readme,
     author='kizkoh',
     author_email='mac-daisuki@live.com',
     license='MIT',
     install_requires=['psutil'],
     url='https://github.com/kizkoh/wsgi_status',
-    license=license,
     packages=find_packages(exclude=('examples', 'tests', 'docs')),
+    include_package_data=True,
     test_suite='tests'
 )
