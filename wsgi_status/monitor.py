@@ -201,7 +201,7 @@ class Monitor:
     def status(self, environ, start_response):
         status = '200 OK'
 
-        with open(self.filename, mode="r") as f:
+        with open(self.filename, mode="rb") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
                 data = f.read()
