@@ -79,7 +79,7 @@ class Monitor:
 
     def __call__(self, environ, start_response):
         if environ["REMOTE_ADDR"] == "127.0.0.1":
-            if environ["PATH_INFO"] == "/server_status":
+            if environ["PATH_INFO"] == "/wsgi_status":
                 return self.status(environ, start_response)
         self.pre_request(environ)
         resp = self.wrapped_app(environ, start_response)
