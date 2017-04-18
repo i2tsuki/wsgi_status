@@ -1,0 +1,2 @@
+gunicorn
+git+ssh://git@github.com/kizkoh/wsgi_status.git
