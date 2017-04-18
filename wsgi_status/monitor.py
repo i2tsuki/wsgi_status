@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import fcntl
 import json
 import os
@@ -18,14 +19,9 @@ class Monitor:
         self.pid = os.getpid()
         self.filename = filename
 
-        status = {
-            "pid": self.pid,
-            "host": "",
-            "method": "",
-            "uri": "",
-            "status": "_"
-        }
-
+        self.pre_sigint_handler = signal.getsignal(signal.SIGINT)
+        self.pre_sigterm_handler = signal.getsignal(signal.SIGTERM)
+        self.pre_sigabrt_handler = signal.getsignal(signal.SIGABRT)
 
         # Create status file for own process permissions
         ppid_ctime = psutil.Process(os.getppid()).create_time()
@@ -53,6 +49,14 @@ class Monitor:
         signal.signal(signal.SIGTERM, self.handler)
         signal.signal(signal.SIGABRT, self.handler)
 
+        # Update an initial process status in status file
+        status = {
+            "pid": self.pid,
+            "host": "",
+            "method": "",
+            "uri": "",
+            "status": "_"
+        }
         with open(filename, mode="r+") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
@@ -169,6 +173,9 @@ class Monitor:
                             obj["BusyWorkers"] = obj["BusyWorkers"] - 1
                         else:
                             obj["IdleWorkers"] = obj["IdleWorkers"] - 1
+                        status["host"] = v["host"]
+                        status["method"] = v["method"]
+                        status["uri"] = v["uri"]
                         obj["stats"][i] = status
 
                 f.seek(0)
@@ -177,7 +184,14 @@ class Monitor:
                 f.flush()
             finally:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-                sys.exit(1)
+
+            if signum == signal.SIGINT:
+                self.pre_sigint_handler(signum, stack)
+            elif signum == signal.SIGTERM:
+                self.pre_sigterm_handler(signum, stack)
+            elif signum == signal.SIGABRT:
+                self.pre_sigabrt_handler(signum, stack)
+            sys.exit(1)
 
     def is_threading(self):
         if threading.active_count() > 1:
