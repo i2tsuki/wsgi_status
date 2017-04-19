@@ -6,6 +6,7 @@ import psutil
 import stat
 import signal
 import sys
+import time
 import threading
 
 
@@ -33,10 +34,7 @@ class Monitor:
         if ppid_ctime > file_ctime:
             with open(filename, mode="w") as f:
                 obj = {
-                    "TotalAccesses": 0,
-                    "IdleWorkers": 0,
-                    "BusyWorkers": 0,
-                    "stats": [],
+                    "workers": [],
                 }
                 json.dump(obj, f)
                 os.chown(filename, os.getuid(), os.getgid())
@@ -50,26 +48,29 @@ class Monitor:
         signal.signal(signal.SIGABRT, self.handler)
 
         # Update an initial process status in status file
-        status = {
+        worker = {
             "pid": self.pid,
-            "host": "",
-            "method": "",
+            "requests": 0,
+            "status": "idle",
+            # "vss": 0,
+            # "rss": 0,
+            "last_spawn": int(time.time()),
+            # "tx": 0,
+            # "avg_rt": 0,
             "uri": "",
-            "status": "_"
+            "method": "",
         }
         with open(filename, mode="r+") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
                 obj = json.load(f)
 
-                stats = [(i, v) for i, v in enumerate(obj["stats"]) if v["pid"] == self.pid]
+                stats = [(i, v) for i, v in enumerate(obj["workers"]) if v["pid"] == self.pid]
                 if len(stats) == 0:
-                    obj["stats"].append(status)
+                    obj["workers"].append(worker)
                 else:
                     for i, _ in stats:
-                        obj["stats"][i] = status
-                obj["IdleWorkers"] = obj["IdleWorkers"] + 1
-
+                        obj["workers"][i] = worker
                 f.seek(0)
                 f.truncate(0)
                 json.dump(obj, f)
@@ -78,39 +79,29 @@ class Monitor:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
     def __call__(self, environ, start_response):
-        if environ["REMOTE_ADDR"] == "127.0.0.1":
-            if environ["PATH_INFO"] == "/wsgi_status":
-                return self.status(environ, start_response)
         self.pre_request(environ)
+        if environ["REMOTE_ADDR"] == "127.0.0.1" and environ["PATH_INFO"] == "/wsgi_status":
+                return self.status(environ, start_response)
         resp = self.wrapped_app(environ, start_response)
         self.post_request(environ)
         return resp
 
     def pre_request(self, environ):
-        status = {
-            "pid": self.pid,
-            "host": environ["HTTP_HOST"],
-            "method": environ["REQUEST_METHOD"],
-            "uri": environ["PATH_INFO"],
-            "status": "A"
-        }
-
         with open(self.filename, mode="r+") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
                 obj = json.load(f)
 
-                stats = [(i, v) for i, v in enumerate(obj["stats"]) if v["pid"] == self.pid]
-                if len(stats) == 0:
-                    # ("not find self.pid: %d in stats object", self.pid)
-                    pass
-                else:
-                    for i, _ in stats:
-                        obj["stats"][i] = status
-
-                obj["TotalAccesses"] = obj["TotalAccesses"] + 1
-                obj["IdleWorkers"] = obj["IdleWorkers"] - 1
-                obj["BusyWorkers"] = obj["BusyWorkers"] + 1
+                workers = [(i, v) for i, v in enumerate(obj["workers"]) if v["pid"] == self.pid]
+                if len(workers) != 1:
+                    sys.stderr.write("not find self.pid: %d in workers key", self.pid)
+                index = workers[0][0]
+                worker = workers[0][1]
+                worker["requests"] += 1
+                worker["status"] = "busy"
+                worker["uri"] = environ["PATH_INFO"]
+                worker["method"] = environ["REQUEST_METHOD"]
+                obj["workers"][index] = worker
 
                 f.seek(0)
                 f.truncate(0)
@@ -120,28 +111,20 @@ class Monitor:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
     def post_request(self, environ):
-        status = {
-            "pid": self.pid,
-            "host": environ["HTTP_HOST"],
-            "method": environ["REQUEST_METHOD"],
-            "uri": environ["PATH_INFO"],
-            "status": "_"
-        }
         with open(self.filename, mode="r+") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
                 obj = json.load(f)
 
-                stats = [(i, v) for i, v in enumerate(obj["stats"]) if v["pid"] == self.pid]
-                if len(stats) == 0:
-                    # ("not find self.pid: %d in stats object", self.pid)
-                    pass
-                else:
-                    for i, _ in stats:
-                        obj["stats"][i] = status
-
-                obj["IdleWorkers"] = obj["IdleWorkers"] + 1
-                obj["BusyWorkers"] = obj["BusyWorkers"] - 1
+                workers = [(i, v) for i, v in enumerate(obj["workers"]) if v["pid"] == self.pid]
+                if len(workers) != 1:
+                    sys.stderr.write("not find self.pid: %d in workers key", self.pid)
+                index = workers[0][0]
+                worker = workers[0][1]
+                worker["status"] = "idle"
+                worker["uri"] = ""
+                worker["method"] = ""
+                obj["workers"][index] = worker
 
                 f.seek(0)
                 f.truncate(0)
@@ -151,32 +134,20 @@ class Monitor:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
     def handler(self, signum, stack):
-        status = {
-            "pid": self.pid,
-            "host": "",
-            "method": "",
-            "uri": "",
-            "status": str(signum),
-        }
-
         with open(self.filename, mode="r+") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
                 obj = json.load(f)
 
-                stats = [(i, v) for i, v in enumerate(obj["stats"]) if v["pid"] == self.pid]
-                if len(stats) == 0:
-                    obj["stats"].append(status)
-                else:
-                    for i, v in stats:
-                        if v["status"] == "A":
-                            obj["BusyWorkers"] = obj["BusyWorkers"] - 1
-                        else:
-                            obj["IdleWorkers"] = obj["IdleWorkers"] - 1
-                        status["host"] = v["host"]
-                        status["method"] = v["method"]
-                        status["uri"] = v["uri"]
-                        obj["stats"][i] = status
+                workers = [(i, v) for i, v in enumerate(obj["workers"]) if v["pid"] == self.pid]
+                if len(workers) != 1:
+                    sys.stderr.write("not find self.pid: %d in workers key", self.pid)
+                index = workers[0][0]
+                worker = workers[0][1]
+                worker["status"] = str(signum)
+                worker["uri"] = ""
+                worker["method"] = ""
+                obj["workers"][index] = worker
 
                 f.seek(0)
                 f.truncate(0)
@@ -201,10 +172,18 @@ class Monitor:
     def status(self, environ, start_response):
         status = '200 OK'
 
-        with open(self.filename, mode="rb") as f:
+        with open(self.filename, mode="r") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
-                data = f.read()
+                obj = json.load(f)
+                for i, worker in enumerate(obj["workers"]):
+                    process = psutil.Process(worker["pid"])
+                    vms = process.memory_info().vms
+                    obj["workers"][i]["vss"] = vms
+                    rss = process.memory_info().rss
+                    obj["workers"][i]["rss"] = rss
+
+                data = json.dumps(obj).encode(encoding="utf-8")
                 response_headers = [
                     ('Content-type', 'application/json'),
                     ('Content-Length', str(len(data))),
