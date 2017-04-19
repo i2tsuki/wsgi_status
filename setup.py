@@ -2,13 +2,14 @@
 
 from setuptools import setup, find_packages
 
+import wsgi_status
 
 with open('README.rst') as f:
     readme = f.read()
 
 setup(
     name='wsgi_status',
-    version='0.1.0',
+    version=wsgi_status.__version__,
 
     description='Monitoring wsgi status as an upper wsgi middleware',
     long_description=readme,
