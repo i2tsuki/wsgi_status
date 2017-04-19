@@ -12,7 +12,7 @@ import threading
 class Monitor:
     def __init__(self, app, filename):
         if self.is_threading():
-            print()
+            sys.stderr.write("does not support worker threading model.  use only worker pre-fork")
             sys.exit(1)
 
         self.wrapped_app = app
