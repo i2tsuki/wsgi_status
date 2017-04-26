@@ -12,13 +12,18 @@ import threading
 
 class Monitor:
     def __init__(self, app, filename):
-        if self.is_threading():
-            sys.stderr.write("does not support worker threading model.  use only worker pre-fork")
-            sys.exit(1)
-
-        self.wrapped_app = app
+        self.app = app
         self.pid = os.getpid()
         self.filename = filename
+        self.thread = False
+
+        if self.is_threadmodel():
+            self.thread = True
+            with open(filename, mode="w") as fp:
+                fp.write("{}{}".format(
+                    "WSGI status does not support worker thread model.  ",
+                    "Work only worker pre-fork."))
+                return
 
         self.pre_sigint_handler = signal.getsignal(signal.SIGINT)
         self.pre_sigterm_handler = signal.getsignal(signal.SIGTERM)
@@ -79,11 +84,15 @@ class Monitor:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
     def __call__(self, environ, start_response):
+        if self.thread is True:
+            resp = self.app(environ, start_response)
+            return resp
+
         self.pre_request(environ)
         if environ["REMOTE_ADDR"] == "127.0.0.1" and environ["PATH_INFO"] == "/wsgi_status":
             self.post_request(environ)
             return self.status(environ, start_response)
-        resp = self.wrapped_app(environ, start_response)
+        resp = self.app(environ, start_response)
         self.post_request(environ)
         return resp
 
@@ -165,7 +174,7 @@ class Monitor:
                 self.pre_sigabrt_handler(signum, stack)
             sys.exit(1)
 
-    def is_threading(self):
+    def is_threadmodel(self):
         if threading.active_count() > 1:
             return True
         return False
