@@ -92,9 +92,32 @@ class Monitor:
         if environ["REMOTE_ADDR"] == "127.0.0.1" and environ["PATH_INFO"] == "/wsgi_status":
             self.post_request(environ)
             return self.status(environ, start_response)
-        resp = self.app(environ, start_response)
-        self.post_request(environ)
-        return resp
+
+        def post_request(status_code, headers, exc_info=None):
+            with open(self.filename, mode="r+") as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                try:
+                    obj = json.load(f)
+
+                    workers = [(i, v) for i, v in enumerate(obj["workers"]) if v["pid"] == self.pid]
+                    if len(workers) != 1:
+                        sys.stderr.write("not find self.pid: %d in workers key", self.pid)
+                    index = workers[0][0]
+                    worker = workers[0][1]
+                    worker["status"] = "idle"
+                    worker["uri"] = ""
+                    worker["method"] = ""
+                    obj["workers"][index] = worker
+
+                    f.seek(0)
+                    f.truncate(0)
+                    json.dump(obj, f)
+                    f.flush()
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            return start_response(status_code, headers, exc_info)
+
+        return self.app(environ, post_request)
 
     def pre_request(self, environ):
         with open(self.filename, mode="r+") as f:
@@ -105,35 +128,13 @@ class Monitor:
                 workers = [(i, v) for i, v in enumerate(obj["workers"]) if v["pid"] == self.pid]
                 if len(workers) != 1:
                     sys.stderr.write("not find self.pid: %d in workers key", self.pid)
+
                 index = workers[0][0]
                 worker = workers[0][1]
                 worker["requests"] += 1
                 worker["status"] = "busy"
                 worker["uri"] = environ["PATH_INFO"]
                 worker["method"] = environ["REQUEST_METHOD"]
-                obj["workers"][index] = worker
-
-                f.seek(0)
-                f.truncate(0)
-                json.dump(obj, f)
-                f.flush()
-            finally:
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-
-    def post_request(self, environ):
-        with open(self.filename, mode="r+") as f:
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-            try:
-                obj = json.load(f)
-
-                workers = [(i, v) for i, v in enumerate(obj["workers"]) if v["pid"] == self.pid]
-                if len(workers) != 1:
-                    sys.stderr.write("not find self.pid: %d in workers key", self.pid)
-                index = workers[0][0]
-                worker = workers[0][1]
-                worker["status"] = "idle"
-                worker["uri"] = ""
-                worker["method"] = ""
                 obj["workers"][index] = worker
 
                 f.seek(0)
