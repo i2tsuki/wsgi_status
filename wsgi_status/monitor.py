@@ -187,12 +187,15 @@ class Monitor:
             try:
                 obj = json.load(f)
                 for i, worker in enumerate(obj["workers"]):
-                    process = psutil.Process(worker["pid"])
-                    vms = process.memory_info().vms
-                    obj["workers"][i]["vss"] = vms
-                    rss = process.memory_info().rss
-                    obj["workers"][i]["rss"] = rss
-
+                    # Catch exception when the process is terminated by master
+                    try:
+                        process = psutil.Process(worker["pid"])
+                        vms = process.memory_info().vms
+                        obj["workers"][i]["vss"] = vms
+                        rss = process.memory_info().rss
+                        obj["workers"][i]["rss"] = rss
+                    except:
+                        pass
                 data = json.dumps(obj).encode(encoding="utf-8")
                 response_headers = [
                     ('Content-type', 'application/json'),
