@@ -89,9 +89,6 @@ class Monitor:
             return resp
 
         self.pre_request(environ)
-        if environ["REMOTE_ADDR"] == "127.0.0.1" and environ["PATH_INFO"] == "/wsgi_status":
-            self.post_request(environ)
-            return self.status(environ, start_response)
 
         def post_request(status_code, headers, exc_info=None):
             with open(self.filename, mode="r+") as f:
