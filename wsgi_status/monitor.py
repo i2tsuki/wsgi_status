@@ -176,31 +176,3 @@ class Monitor:
         if threading.active_count() > 1:
             return True
         return False
-
-    def status(self, environ, start_response):
-        status = '200 OK'
-
-        with open(self.filename, mode="r") as f:
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-            try:
-                obj = json.load(f)
-                for i, worker in enumerate(obj["workers"]):
-                    # Catch exception when the process is terminated by master
-                    try:
-                        process = psutil.Process(worker["pid"])
-                        vms = process.memory_info().vms
-                        obj["workers"][i]["vss"] = vms
-                        rss = process.memory_info().rss
-                        obj["workers"][i]["rss"] = rss
-                    except:
-                        pass
-                data = json.dumps(obj).encode(encoding="utf-8")
-                response_headers = [
-                    ('Content-type', 'application/json'),
-                    ('Content-Length', str(len(data))),
-                ]
-                start_response(status, response_headers)
-
-            finally:
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-                return iter([data])
