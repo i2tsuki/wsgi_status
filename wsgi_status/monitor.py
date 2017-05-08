@@ -142,6 +142,11 @@ class Monitor:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
     def handler(self, signum, stack):
+        proc = psutil.Process()
+        files = proc.open_files()
+        for f in files:
+            if f.path == self.filename:
+                fcntl.flock(f.fd, fcntl.LOCK_UN)
         with open(self.filename, mode="r+") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
