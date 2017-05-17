@@ -105,7 +105,6 @@ class Monitor:
                 self.pre_sigterm_handler(signum, stack)
             elif signum == signal.SIGABRT:
                 self.pre_sigabrt_handler(signum, stack)
-            sys.exit(1)
 
     def is_threadmodel(self):
         if threading.active_count() > 1:
