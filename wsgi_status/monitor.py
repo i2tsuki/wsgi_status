@@ -63,7 +63,7 @@ class Monitor:
         signal.signal(signal.SIGINT, self.handler)
         signal.signal(signal.SIGTERM, self.handler)
         signal.signal(signal.SIGABRT, self.handler)
-        self.update_status()
+        self.update_status(init=True)
 
     def __call__(self, environ, start_response):
         if self.thread is True:
@@ -76,7 +76,7 @@ class Monitor:
             self.worker["status"] = "idle"
             self.worker["uri"] = ""
             self.worker["method"] = ""
-            self.update_status()
+            self.update_status(init=False)
             return start_response(status_code, headers, exc_info)
 
         return self.app(environ, post_request)
@@ -86,7 +86,7 @@ class Monitor:
         self.worker["status"] = "busy"
         self.worker["uri"] = environ["PATH_INFO"]
         self.worker["method"] = environ["REQUEST_METHOD"]
-        self.update_status()
+        self.update_status(init=False)
 
     def handler(self, signum, stack):
         self.worker["status"] = str(signum)
@@ -98,7 +98,7 @@ class Monitor:
         for f in files:
             if f.path == self.filename:
                 fcntl.flock(f.fd, fcntl.LOCK_UN)
-            self.update_status()
+            self.update_status(init=False)
             if signum == signal.SIGINT:
                 self.pre_sigint_handler(signum, stack)
             elif signum == signal.SIGTERM:
@@ -112,7 +112,7 @@ class Monitor:
             return True
         return False
 
-    def update_status(self):
+    def update_status(self, init):
         with open(self.filename, mode="r+") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
@@ -130,7 +130,8 @@ class Monitor:
                     obj["workers"][index] = self.worker
                 else:
                     obj["workers"].append(self.worker)
-                    sys.stderr.write("not find self.pid: %d in workers key", self.pid)
+                    if not init:
+                        sys.stderr.write("not find self.pid: {} in workers key".format(self.pid))
                 f.seek(0)
                 f.truncate(0)
                 json.dump(obj, f)
