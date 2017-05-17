@@ -1,9 +1,10 @@
 #!/bin/sh
 
+exec 2>&1
+
 set -eu
 
 python -m venv ./venv
-./venv/bin/pip install -r ./requirements_test.txt
 ./venv/bin/python ./setup.py develop
 
 cd ./examples
