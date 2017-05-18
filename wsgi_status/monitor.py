@@ -2,7 +2,6 @@
 import fcntl
 import json
 import os
-import psutil
 import stat
 import signal
 import sys
@@ -63,7 +62,8 @@ class Monitor:
         signal.signal(signal.SIGINT, self.handler)
         signal.signal(signal.SIGTERM, self.handler)
         signal.signal(signal.SIGABRT, self.handler)
-        self.update_status(init=True)
+        with open(self.filename, mode="r+") as self.fp:
+            self.update_status(fp=self.fp, init=True)
 
     def __call__(self, environ, start_response):
         if self.thread is True:
@@ -76,7 +76,8 @@ class Monitor:
             self.worker["status"] = "idle"
             self.worker["uri"] = ""
             self.worker["method"] = ""
-            self.update_status(init=False)
+            with open(self.filename, mode="r+") as self.fp:
+                self.update_status(fp=self.fp, init=False)
             return start_response(status_code, headers, exc_info)
 
         return self.app(environ, post_request)
@@ -86,54 +87,51 @@ class Monitor:
         self.worker["status"] = "busy"
         self.worker["uri"] = environ["PATH_INFO"]
         self.worker["method"] = environ["REQUEST_METHOD"]
-        self.update_status(init=False)
+        with open(self.filename, mode="r+") as self.fp:
+            self.update_status(fp=self.fp, init=False)
 
     def handler(self, signum, stack):
         self.worker["status"] = str(signum)
         self.worker["uri"] = ""
         self.worker["method"] = ""
 
-        proc = psutil.Process()
-        files = proc.open_files()
-        for f in files:
-            if f.path == self.filename:
-                fcntl.flock(f.fd, fcntl.LOCK_UN)
-            self.update_status(init=False)
-            if signum == signal.SIGINT:
-                self.pre_sigint_handler(signum, stack)
-            elif signum == signal.SIGTERM:
-                self.pre_sigterm_handler(signum, stack)
-            elif signum == signal.SIGABRT:
-                self.pre_sigabrt_handler(signum, stack)
+        fcntl.flock(self.fp.fd, fcntl.LOCK_UN)
+        with open(self.filename, mode="r+") as fp:
+            self.update_status(fp=fp, init=False)
+        if signum == signal.SIGINT:
+            self.pre_sigint_handler(signum, stack)
+        elif signum == signal.SIGTERM:
+            self.pre_sigterm_handler(signum, stack)
+        elif signum == signal.SIGABRT:
+            self.pre_sigabrt_handler(signum, stack)
 
     def is_threadmodel(self):
         if threading.active_count() > 1:
             return True
         return False
 
-    def update_status(self, init):
-        with open(self.filename, mode="r+") as f:
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+    def update_status(self, fp, init):
+        fcntl.flock(fp.fileno(), fcntl.LOCK_EX)
+        try:
+            obj = {}
             try:
-                obj = {}
-                try:
-                    obj = json.load(f)
-                except ValueError:
-                    # Failed to json parse
-                    obj = {
-                        "workers": [],
-                    }
-                workers = [(i, v) for i, v in enumerate(obj["workers"]) if v["pid"] == self.pid]
-                if len(workers) == 1:
-                    index = workers[0][0]
-                    obj["workers"][index] = self.worker
-                else:
-                    obj["workers"].append(self.worker)
-                    if not init:
-                        sys.stderr.write("not find self.pid: {} in workers key".format(self.pid))
-                f.seek(0)
-                f.truncate(0)
-                json.dump(obj, f)
-                f.flush()
-            finally:
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                obj = json.load(fp)
+            except ValueError:
+                # Failed to json parse
+                obj = {
+                    "workers": [],
+                }
+            workers = [(i, v) for i, v in enumerate(obj["workers"]) if v["pid"] == self.pid]
+            if len(workers) == 1:
+                index = workers[0][0]
+                obj["workers"][index] = self.worker
+            else:
+                obj["workers"].append(self.worker)
+                if not init:
+                    sys.stderr.write("not find self.pid: {} in workers key".format(self.pid))
+            fp.seek(0)
+            fp.truncate(0)
+            json.dump(obj, fp)
+            fp.flush()
+        finally:
+            fcntl.flock(fp.fileno(), fcntl.LOCK_UN)
