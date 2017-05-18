@@ -4,5 +4,5 @@ from wsgi_status.monitor import Monitor
 
 import echo
 
-filename = "/dev/shm/gunicorn_stat.json"
+filename = "/dev/shm/gunicorn_status.json"
 app = Monitor(echo.app, filename)
