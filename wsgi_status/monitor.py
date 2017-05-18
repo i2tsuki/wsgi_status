@@ -96,7 +96,8 @@ class Monitor:
         self.worker["uri"] = ""
         self.worker["method"] = ""
 
-        fcntl.flock(self.fp.fd, fcntl.LOCK_UN)
+        if not self.fp.closed:
+            fcntl.flock(self.fp, fcntl.LOCK_UN)
         with open(self.filename, mode="r+") as fp:
             self.update_status(fp=fp, init=False)
         if signum == signal.SIGINT:
@@ -112,7 +113,7 @@ class Monitor:
         return False
 
     def update_status(self, fp, init):
-        fcntl.flock(fp.fileno(), fcntl.LOCK_EX)
+        fcntl.flock(fp, fcntl.LOCK_EX)
         try:
             obj = {}
             try:
@@ -135,4 +136,4 @@ class Monitor:
             json.dump(obj, fp)
             fp.flush()
         finally:
-            fcntl.flock(fp.fileno(), fcntl.LOCK_UN)
+            fcntl.flock(fp, fcntl.LOCK_UN)
